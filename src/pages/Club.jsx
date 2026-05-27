@@ -1,22 +1,33 @@
 import { useEffect, useState } from "react";
-import logo from "../assets/smallLogo.svg";
-
-const teams = {
-  "금융 IT팀": "동아리 펀드 자금을 운용하는 부서 주식투자 경험자 우대 + 운용 성과 보수 지급 (벤치마크 초과수익률 비례) / 투자할 기업 재무제표에 대한 이해 & 기초 이론 바탕의 기업 실적 및 가치 분석\n(실제 펀드 자금을 운영하는 만큼 실력과 책임감 중요)\n- 자산운용부서 내 리서치팀과 리스크관리팀",
-  "매크로 팀": "",
-  "트레이딩 팀": "",
-  "자산 운용 팀": "",
-  "증권 1팀": "",
-  "증권 2팀": "",
-};
-
-const teamList = ["금융 IT팀", "매크로 팀", "트레이딩 팀", "자산 운용 팀", "증권 1팀", "증권 2팀"];
+import { getClubPage } from "../api/publicApi";
 
 const Club = () => {
-  const [selected, setSelected] = useState("금융 IT팀");
+  const [page, setPage] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    document.title = "SISC | 동아리 소개";
+    document.title = "세종투자연구회 | 동아리 소개";
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    getClubPage()
+      .then((data) => {
+        if (!ignore) {
+          setPage(data);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!ignore) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   return (
@@ -31,43 +42,39 @@ const Club = () => {
 
       {/* Content */}
       <div className="bg-white flex-1 min-h-screen">
-        <div className="max-w-[1200px] mx-auto flex flex-row gap-8 md:gap-16 px-6 md:px-10 py-8 md:py-12">
-          {/* Sidebar */}
-          <div className="w-28 md:w-52 shrink-0">
-            {/* Logo + Club name — hidden on mobile */}
-            <div className="hidden md:flex items-center gap-3 mb-10">
-              <img src={logo} alt="SISC" className="w-12 h-12 shrink-0" />
-              <span className="font-dinCondensed text-[#1e3a8a] font-bold text-[15px] leading-snug">
-                Sejong Investment<br />Scholars Club
-              </span>
+        <div className="max-w-[1200px] mx-auto px-6 md:px-10 py-8 md:py-12">
+          {loading ? (
+            <div className="max-w-[960px] mx-auto">
+              <div className="h-8 w-48 bg-gray-100 rounded mb-8 animate-pulse" />
+              <div className="space-y-4">
+                <div className="h-4 bg-gray-100 rounded animate-pulse" />
+                <div className="h-4 bg-gray-100 rounded animate-pulse" />
+                <div className="h-4 w-2/3 bg-gray-100 rounded animate-pulse" />
+              </div>
             </div>
-
-            {/* Filter */}
-            <p className="text-gray-400 text-xs mb-3">Filter</p>
-            <div className="flex flex-col border-l-2 border-gray-200 pl-4 gap-4">
-              {teamList.map((team) => (
-                <button
-                  key={team}
-                  onClick={() => setSelected(team)}
-                  className={`text-left text-sm transition-colors ${
-                    selected === team
-                      ? "text-[#1e3a8a] font-semibold"
-                      : "text-gray-400 hover:text-gray-600"
-                  }`}
-                >
-                  {team}
-                </button>
-              ))}
+          ) : page ? (
+            <article className="max-w-[960px] mx-auto">
+              <h3 className="text-[#1a1a1a] text-2xl md:text-4xl font-bold mb-6 md:mb-8">
+                {page.title}
+              </h3>
+              {page.contentHtml ? (
+                <div
+                  className="public-content text-gray-700"
+                  dangerouslySetInnerHTML={{ __html: page.contentHtml }}
+                />
+              ) : (
+                <p className="text-gray-700 text-base leading-relaxed whitespace-pre-line">
+                  {page.contentText}
+                </p>
+              )}
+            </article>
+          ) : (
+            <div className="max-w-[960px] mx-auto border border-gray-100 rounded px-6 py-12 text-center">
+              <p className="text-gray-500 text-sm">
+                동아리 소개 콘텐츠가 아직 준비되지 않았습니다.
+              </p>
             </div>
-          </div>
-
-          {/* Team content */}
-          <div className="flex-1 pt-1">
-            <h3 className="text-[#1a1a1a] text-2xl md:text-4xl font-bold mb-6 md:mb-8">{selected}</h3>
-            <p className="text-gray-700 text-base leading-relaxed whitespace-pre-line">
-              {teams[selected]}
-            </p>
-          </div>
+          )}
         </div>
       </div>
     </div>

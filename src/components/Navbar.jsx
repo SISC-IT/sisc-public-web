@@ -3,12 +3,13 @@ import { Link, useLocation } from "react-router-dom";
 import menuSvg from "../assets/menu.svg";
 import smallLogo from "../assets/logo.svg";
 
+const clubWebUrl = import.meta.env.VITE_CLUB_WEB_URL?.trim();
+
 const navLinks = [
   { to: "/club", label: "동아리 소개" },
   { to: "/executives", label: "임원소개" },
-  { to: "/portfolio", label: "운용 포트폴리오" },
-  { to: "/monthly", label: "월간세투연" },
-  { href: "https://sisc.kr", label: "웹사이트", external: true },
+  { to: "/monthly", label: "월간 세투연" },
+  ...(clubWebUrl ? [{ href: clubWebUrl, label: "웹사이트", external: true }] : []),
 ];
 
 const Navbar = () => {

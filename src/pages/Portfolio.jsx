@@ -129,7 +129,7 @@ const Portfolio = () => {
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    document.title = "SISC | 운용 포트폴리오";
+    document.title = "세종투자연구회 | 운용 포트폴리오";
   }, []);
 
   const filtered = allItems.filter(

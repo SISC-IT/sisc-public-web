@@ -3,7 +3,7 @@ import logo from "../assets/logo.svg";
 
 const Home = () => {
   useEffect(() => {
-    document.title = "월간세투연";
+    document.title = "세종투자연구회";
   }, []);
 
   return (

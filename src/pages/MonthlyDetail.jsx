@@ -1,72 +1,200 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import * as pdfjsLib from "pdfjs-dist/build/pdf.mjs";
+import pdfWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
+import { getPublicPost } from "../api/publicApi";
 import logo from "../assets/logo.svg";
 
-const posts = [
-  {
-    id: 1,
-    title: "한국전력, 에너지 시장의 균형을 다시 세우다",
-    date: "2025.11.10",
-    month: "November 2025",
-  },
-  {
-    id: 2,
-    title: "초보 투자자를 위한 개념·전략 이해 가이드",
-    date: "2025.11.10",
-    month: "November 2025",
-  },
-  {
-    id: 3,
-    title: "세투연 포트폴리오 변화와 핵심 전략 리뷰",
-    date: "2025.11.10",
-    month: "November 2025",
-  },
-  {
-    id: 4,
-    title: "세투연의 한 달 활동 기록과 주요 성과 요약",
-    date: "2025.11.10",
-    month: "November 2025",
-  },
-  {
-    id: 5,
-    title: "글로벌 매크로 환경 분석 리포트",
-    date: "2025.10.10",
-    month: "October 2025",
-  },
-  {
-    id: 6,
-    title: "월간 세투연 2025년 10월호",
-    date: "2025.10.10",
-    month: "October 2025",
-  },
-  {
-    id: 7,
-    title: "금융 IT 팀 기술 스택 업데이트 보고서",
-    date: "2025.10.10",
-    month: "October 2025",
-  },
-  {
-    id: 8,
-    title: "증권 분석 종합 보고서 모음",
-    date: "2025.10.10",
-    month: "October 2025",
-  },
-];
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-const TOTAL_SPREADS = 6;
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)").matches : false,
+  );
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(mediaQuery.matches);
+    update();
+    mediaQuery.addEventListener("change", update);
+    return () => mediaQuery.removeEventListener("change", update);
+  }, []);
+
+  return isMobile;
+}
+
+function PdfPageCanvas({ pdfDocument, pageNumber }) {
+  const wrapperRef = useRef(null);
+  const canvasRef = useRef(null);
+  const [rendering, setRendering] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    let renderTask = null;
+
+    async function renderPage() {
+      if (!pdfDocument || !canvasRef.current || !wrapperRef.current) return;
+
+      setRendering(true);
+      const page = await pdfDocument.getPage(pageNumber);
+      if (cancelled) return;
+
+      const baseViewport = page.getViewport({ scale: 1 });
+      const wrapperWidth = wrapperRef.current.clientWidth || 420;
+      const scale = wrapperWidth / baseViewport.width;
+      const viewport = page.getViewport({ scale });
+      const outputScale = window.devicePixelRatio || 1;
+      const canvas = canvasRef.current;
+      const context = canvas.getContext("2d");
+
+      canvas.width = Math.floor(viewport.width * outputScale);
+      canvas.height = Math.floor(viewport.height * outputScale);
+      canvas.style.width = `${viewport.width}px`;
+      canvas.style.height = `${viewport.height}px`;
+
+      renderTask = page.render({
+        canvasContext: context,
+        viewport,
+        transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null,
+      });
+
+      await renderTask.promise;
+      if (!cancelled) {
+        setRendering(false);
+      }
+    }
+
+    renderPage().catch(() => {
+      if (!cancelled) {
+        setRendering(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      if (renderTask) {
+        renderTask.cancel();
+      }
+    };
+  }, [pdfDocument, pageNumber]);
+
+  return (
+    <div ref={wrapperRef} className="relative flex-1 bg-white aspect-[1/1.41] overflow-hidden">
+      {rendering && <div className="absolute inset-0 bg-gray-100 animate-pulse" />}
+      <canvas ref={canvasRef} className="block max-w-full bg-white" />
+    </div>
+  );
+}
 
 const MonthlyDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
+  const [post, setPost] = useState(null);
   const [spread, setSpread] = useState(1);
+  const [pdfDocument, setPdfDocument] = useState(null);
+  const [pageCount, setPageCount] = useState(0);
+  const [loadingPost, setLoadingPost] = useState(true);
+  const [loadingPdf, setLoadingPdf] = useState(false);
+  const [postError, setPostError] = useState(false);
+  const [pdfError, setPdfError] = useState(false);
 
-  const post = posts.find((p) => p.id === Number(id)) ?? posts[0];
+  const mainPdf = post?.pdfAttachments?.[0] ?? null;
+  const pagesPerSpread = isMobile ? 1 : 2;
+  const maxSpread = Math.max(1, Math.ceil((pageCount || 1) / pagesPerSpread));
+  const startPage = (spread - 1) * pagesPerSpread + 1;
+  const visiblePages = useMemo(() => {
+    if (!pdfDocument) return [];
+    return Array.from({ length: pagesPerSpread }, (_, index) => startPage + index)
+      .filter((pageNumber) => pageNumber <= pageCount);
+  }, [pageCount, pagesPerSpread, pdfDocument, startPage]);
 
   useEffect(() => {
-    document.title = "SISC | 월간 세투연";
+    document.title = "세종투자연구회 | 월간 세투연";
     setSpread(1);
+    setPost(null);
+    setPdfDocument(null);
+    setPageCount(0);
+    setPostError(false);
+    setPdfError(false);
+    setLoadingPost(true);
     window.scrollTo(0, 0);
+
+    let ignore = false;
+    getPublicPost(id)
+      .then((data) => {
+        if (!ignore) {
+          setPostError(false);
+          setPost(data);
+          document.title = `세종투자연구회 | ${data.title}`;
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setPostError(true);
+          setPost(null);
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          setLoadingPost(false);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
   }, [id]);
+
+  useEffect(() => {
+    if (!mainPdf?.url) {
+      setPdfDocument(null);
+      setPageCount(0);
+      setLoadingPdf(false);
+      setPdfError(false);
+      return undefined;
+    }
+
+    setLoadingPdf(true);
+    setPdfError(false);
+    const loadingTask = pdfjsLib.getDocument({ url: mainPdf.url });
+
+    loadingTask.promise
+      .then((document) => {
+        setPdfDocument(document);
+        setPageCount(document.numPages);
+      })
+      .catch(() => {
+        setPdfDocument(null);
+        setPageCount(0);
+        setPdfError(true);
+      })
+      .finally(() => {
+        setLoadingPdf(false);
+      });
+
+    return () => {
+      loadingTask.destroy();
+    };
+  }, [mainPdf?.url]);
+
+  useEffect(() => {
+    setSpread((current) => Math.min(current, maxSpread));
+  }, [maxSpread]);
+
+  const goPrev = () => {
+    if (spread > 1) {
+      setSpread((current) => current - 1);
+    } else {
+      navigate("/monthly");
+    }
+  };
+
+  const goNext = () => {
+    if (spread < maxSpread) {
+      setSpread((current) => current + 1);
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col bg-white min-h-screen">
@@ -80,33 +208,69 @@ const MonthlyDetail = () => {
           <span className="font-bold text-white text-m">월간 세투연</span>
         </Link>
       </div>
-      <div className="h-[8px] w-[361px] bg-gradient-to-r from-[#194A8F] via-[#1469E1] to-[#1D80F4]" />
+      <div className="h-[8px] w-[361px] max-w-full bg-gradient-to-r from-[#194A8F] via-[#1469E1] to-[#1D80F4]" />
 
       {/* Viewer */}
       <div className="flex-1 flex items-center justify-center relative px-10 md:px-20 py-8">
-        {/* Prev */}
         <button
-          onClick={() => {
-            if (spread > 1) setSpread((s) => s - 1);
-            else navigate("/monthly");
-          }}
-          className="absolute left-2 md:left-6 top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 text-xl transition-colors"
+          type="button"
+          aria-label="이전 페이지"
+          onClick={goPrev}
+          className="absolute left-2 md:left-6 top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 text-xl transition-colors z-10"
         >
           ‹
         </button>
 
-        {/* Document pages — two-page on desktop, single on mobile */}
-        <div className="flex gap-1 w-full max-w-[860px] shadow-lg">
-          <div className="flex-1 bg-gray-300 aspect-[1/1.41] rounded-l md:rounded-l" />
-          <div className="hidden md:block flex-1 bg-gray-100 aspect-[1/1.41] rounded-r" />
-        </div>
+        {loadingPost || loadingPdf ? (
+          <div className="flex gap-1 w-full max-w-[860px] shadow-lg">
+            <div className="flex-1 bg-gray-100 aspect-[1/1.41] animate-pulse" />
+            <div className="hidden md:block flex-1 bg-gray-100 aspect-[1/1.41] animate-pulse" />
+          </div>
+        ) : pdfDocument && visiblePages.length > 0 ? (
+          <div className="flex gap-1 w-full max-w-[860px] shadow-lg bg-gray-200">
+            {visiblePages.map((pageNumber) => (
+              <PdfPageCanvas
+                key={pageNumber}
+                pdfDocument={pdfDocument}
+                pageNumber={pageNumber}
+              />
+            ))}
+            {!isMobile && visiblePages.length === 1 && (
+              <div className="hidden md:block flex-1 bg-gray-100 aspect-[1/1.41]" />
+            )}
+          </div>
+        ) : (
+          <div className="w-full max-w-[860px] bg-white shadow-lg border border-gray-200 px-8 py-10 min-h-[420px]">
+            <h1 className="text-2xl font-bold text-gray-900 mb-6">
+              {post?.title ??
+                (postError
+                  ? "공개 게시물을 불러오지 못했습니다."
+                  : "게시물을 찾을 수 없습니다.")}
+            </h1>
+            {pdfError && (
+              <p className="text-sm text-gray-500 mb-4">
+                PDF를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+              </p>
+            )}
+            {post?.contentHtml ? (
+              <div
+                className="public-content text-gray-700"
+                dangerouslySetInnerHTML={{ __html: post.contentHtml }}
+              />
+            ) : (
+              <p className="text-gray-700 whitespace-pre-line">
+                {post?.contentText ?? "공개된 문서가 없습니다."}
+              </p>
+            )}
+          </div>
+        )}
 
-        {/* Next */}
         <button
-          onClick={() => {
-            if (spread < TOTAL_SPREADS) setSpread((s) => s + 1);
-          }}
-          className="absolute right-2 md:right-6 top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 text-xl transition-colors"
+          type="button"
+          aria-label="다음 페이지"
+          onClick={goNext}
+          disabled={spread >= maxSpread}
+          className="absolute right-2 md:right-6 top-1/2 -translate-y-1/2 w-9 h-9 md:w-10 md:h-10 rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-30 disabled:hover:bg-gray-100 flex items-center justify-center text-gray-600 text-xl transition-colors z-10"
         >
           ›
         </button>
@@ -114,7 +278,9 @@ const MonthlyDetail = () => {
 
       {/* Page indicator */}
       <div className="text-center text-xs text-gray-400 pb-6">
-        {spread * 2 - 1} – {spread * 2} / {TOTAL_SPREADS * 2}
+        {pageCount > 0
+          ? `${startPage} – ${Math.min(startPage + pagesPerSpread - 1, pageCount)} / ${pageCount}`
+          : "0 / 0"}
       </div>
     </div>
   );
