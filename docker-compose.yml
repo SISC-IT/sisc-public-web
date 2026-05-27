@@ -1,0 +1,16 @@
+services:
+  public-web:
+    image: ghcr.io/sisc-it/sisc-public-web:${TAG:-latest}
+    container_name: public-web
+    restart: always
+    networks:
+      - sisc-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+networks:
+  sisc-net:
+    external: true
+    name: sisc-web_sisc-net   # docker compose는 프로젝트명_네트워크명으
