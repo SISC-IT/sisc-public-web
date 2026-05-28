@@ -107,9 +107,6 @@ const MonthlyDetail = () => {
   const maxSpread = Math.max(1, Math.ceil((pageCount || 1) / pagesPerSpread));
   const startPage = (spread - 1) * pagesPerSpread + 1;
   const endPage = Math.min(startPage + pagesPerSpread - 1, pageCount || startPage);
-  const spreadStartProgress = pageCount > 0
-    ? Math.min(100, Math.max(0, ((startPage - 1) / pageCount) * 100))
-    : 0;
   const spreadEndProgress = pageCount > 0
     ? Math.min(100, Math.max(0, (endPage / pageCount) * 100))
     : 0;
@@ -221,19 +218,14 @@ const MonthlyDetail = () => {
       return undefined;
     }
 
-    setHeaderProgress(spreadStartProgress);
-    const frameId = window.requestAnimationFrame(() => {
-      setHeaderProgress(spreadEndProgress);
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
+    setHeaderProgress(spreadEndProgress);
+    return undefined;
   }, [
     loadingPdf,
     pageCount,
     pdfDocument,
     pdfLoadProgress,
     spreadEndProgress,
-    spreadStartProgress,
   ]);
 
   const goPrev = () => {
@@ -262,14 +254,16 @@ const MonthlyDetail = () => {
           <span className="font-bold text-white text-m">월간 세투연</span>
         </Link>
       </div>
-      <div className="h-[8px] w-[361px] max-w-full bg-gray-900 overflow-hidden">
-        <div
-          className="h-full w-full origin-left bg-gradient-to-r from-[#194A8F] via-[#1469E1] to-[#1D80F4]"
-          style={{
-            transform: `scaleX(${headerProgress / 100})`,
-            transition: "transform 640ms ease-out",
-          }}
-        />
+      <div className="px-10 md:px-20">
+        <div className="h-[8px] w-full max-w-[860px] mx-auto bg-gray-900 overflow-hidden">
+          <div
+            className="h-full w-full origin-left bg-gradient-to-r from-[#194A8F] via-[#1469E1] to-[#1D80F4]"
+            style={{
+              transform: `scaleX(${headerProgress / 100})`,
+              transition: "transform 640ms ease-out",
+            }}
+          />
+        </div>
       </div>
 
       {/* Viewer */}
