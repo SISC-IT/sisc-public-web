@@ -96,13 +96,23 @@ const MonthlyDetail = () => {
   const [pageCount, setPageCount] = useState(0);
   const [loadingPost, setLoadingPost] = useState(true);
   const [loadingPdf, setLoadingPdf] = useState(false);
+  const [pdfLoadProgress, setPdfLoadProgress] = useState(0);
+  const [headerProgress, setHeaderProgress] = useState(0);
   const [postError, setPostError] = useState(false);
   const [pdfError, setPdfError] = useState(false);
 
   const mainPdf = post?.pdfAttachments?.[0] ?? null;
+  const mainPdfUrl = mainPdf?.url?.replace(/%2F/gi, "/") ?? null;
   const pagesPerSpread = isMobile ? 1 : 2;
   const maxSpread = Math.max(1, Math.ceil((pageCount || 1) / pagesPerSpread));
   const startPage = (spread - 1) * pagesPerSpread + 1;
+  const endPage = Math.min(startPage + pagesPerSpread - 1, pageCount || startPage);
+  const spreadStartProgress = pageCount > 0
+    ? Math.min(100, Math.max(0, ((startPage - 1) / pageCount) * 100))
+    : 0;
+  const spreadEndProgress = pageCount > 0
+    ? Math.min(100, Math.max(0, (endPage / pageCount) * 100))
+    : 0;
   const visiblePages = useMemo(() => {
     if (!pdfDocument) return [];
     return Array.from({ length: pagesPerSpread }, (_, index) => startPage + index)
@@ -115,6 +125,8 @@ const MonthlyDetail = () => {
     setPost(null);
     setPdfDocument(null);
     setPageCount(0);
+    setPdfLoadProgress(0);
+    setHeaderProgress(0);
     setPostError(false);
     setPdfError(false);
     setLoadingPost(true);
@@ -147,26 +159,42 @@ const MonthlyDetail = () => {
   }, [id]);
 
   useEffect(() => {
-    if (!mainPdf?.url) {
+    if (!mainPdfUrl) {
       setPdfDocument(null);
       setPageCount(0);
       setLoadingPdf(false);
+      setPdfLoadProgress(0);
+      setHeaderProgress(0);
       setPdfError(false);
       return undefined;
     }
 
     setLoadingPdf(true);
+    setPdfLoadProgress(6);
     setPdfError(false);
-    const loadingTask = pdfjsLib.getDocument({ url: mainPdf.url });
+    const loadingTask = pdfjsLib.getDocument({
+      url: mainPdfUrl,
+      disableRange: true,
+      disableStream: true,
+    });
+
+    loadingTask.onProgress = ({ loaded, total }) => {
+      if (total > 0) {
+        setPdfLoadProgress(Math.min(95, Math.round((loaded / total) * 100)));
+      }
+    };
 
     loadingTask.promise
       .then((document) => {
         setPdfDocument(document);
         setPageCount(document.numPages);
+        setPdfLoadProgress(100);
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error("Failed to load public PDF", { url: mainPdfUrl, error });
         setPdfDocument(null);
         setPageCount(0);
+        setPdfLoadProgress(0);
         setPdfError(true);
       })
       .finally(() => {
@@ -176,11 +204,37 @@ const MonthlyDetail = () => {
     return () => {
       loadingTask.destroy();
     };
-  }, [mainPdf?.url]);
+  }, [mainPdfUrl]);
 
   useEffect(() => {
     setSpread((current) => Math.min(current, maxSpread));
   }, [maxSpread]);
+
+  useEffect(() => {
+    if (loadingPdf) {
+      setHeaderProgress(Math.max(6, pdfLoadProgress));
+      return undefined;
+    }
+
+    if (!pdfDocument || pageCount === 0) {
+      setHeaderProgress(0);
+      return undefined;
+    }
+
+    setHeaderProgress(spreadStartProgress);
+    const frameId = window.requestAnimationFrame(() => {
+      setHeaderProgress(spreadEndProgress);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [
+    loadingPdf,
+    pageCount,
+    pdfDocument,
+    pdfLoadProgress,
+    spreadEndProgress,
+    spreadStartProgress,
+  ]);
 
   const goPrev = () => {
     if (spread > 1) {
@@ -208,7 +262,15 @@ const MonthlyDetail = () => {
           <span className="font-bold text-white text-m">월간 세투연</span>
         </Link>
       </div>
-      <div className="h-[8px] w-[361px] max-w-full bg-gradient-to-r from-[#194A8F] via-[#1469E1] to-[#1D80F4]" />
+      <div className="h-[8px] w-[361px] max-w-full bg-gray-900 overflow-hidden">
+        <div
+          className="h-full w-full origin-left bg-gradient-to-r from-[#194A8F] via-[#1469E1] to-[#1D80F4]"
+          style={{
+            transform: `scaleX(${headerProgress / 100})`,
+            transition: "transform 640ms ease-out",
+          }}
+        />
+      </div>
 
       {/* Viewer */}
       <div className="flex-1 flex items-center justify-center relative px-10 md:px-20 py-8">
@@ -279,7 +341,7 @@ const MonthlyDetail = () => {
       {/* Page indicator */}
       <div className="text-center text-xs text-gray-400 pb-6">
         {pageCount > 0
-          ? `${startPage} – ${Math.min(startPage + pagesPerSpread - 1, pageCount)} / ${pageCount}`
+          ? `${startPage} – ${endPage} / ${pageCount}`
           : "0 / 0"}
       </div>
     </div>
