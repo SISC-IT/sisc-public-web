@@ -254,16 +254,14 @@ const MonthlyDetail = () => {
           <span className="font-bold text-white text-m">월간 세투연</span>
         </Link>
       </div>
-      <div className="px-10 md:px-20">
-        <div className="h-[8px] w-full max-w-[860px] mx-auto bg-gray-900 overflow-hidden">
-          <div
-            className="h-full w-full origin-left bg-gradient-to-r from-[#194A8F] via-[#1469E1] to-[#1D80F4]"
-            style={{
-              transform: `scaleX(${headerProgress / 100})`,
-              transition: "transform 640ms ease-out",
-            }}
-          />
-        </div>
+      <div className="h-[8px] w-full bg-gray-900 overflow-hidden">
+        <div
+          className="h-full w-full origin-left bg-gradient-to-r from-[#194A8F] via-[#1469E1] to-[#1D80F4]"
+          style={{
+            transform: `scaleX(${headerProgress / 100})`,
+            transition: "transform 640ms ease-out",
+          }}
+        />
       </div>
 
       {/* Viewer */}
